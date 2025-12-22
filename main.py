@@ -1,21 +1,22 @@
 import oci
 import os
+import sys
 import time
 import random
 import argparse
 
-# --- TWOJA KONFIGURACJA ---
-# Upewnij się, że te dane są poprawne (skopiowane z poprzednich kroków)
-SUBNET_ID = "SUBNETID" # Wklej CAŁY OCID
-IMAGE_ID = "IMAGEID"
-# SSH_PUB_FILE = "SSHPUBFILE" # This will be replaced by argparse
+# --- Configuration (Adjust as needed) ---
+# Ensure these values are correct for your OCI environment
+SUBNET_ID = "ocid1.subnet.oc1.iad.xxxx"  # Example: "ocid1.subnet.oc1.iad.xxxx"
+IMAGE_ID = "ocid1.image.oc1.iad.xxxx"   # Example: "ocid1.image.oc1.iad.xxxx"
 
-# Docelowe limity Always Free
+# --- Target Always Free Shape ---
 FINAL_OCPUS = 4.0
 FINAL_MEMORY = 24.0
 SHAPE = "VM.Standard.A1.Flex"
 
 def format_ssh_key(raw_key):
+    """Formats the raw SSH public key content into the required format."""
     if "-----BEGIN" in raw_key:
         lines = raw_key.replace("-----BEGIN PUBLIC KEY-----", "").replace("-----END PUBLIC KEY-----", "").split()
         base64_key = "".join(lines)
@@ -23,35 +24,36 @@ def format_ssh_key(raw_key):
     return raw_key.strip()
 
 def try_upgrade(compute_client, instance):
-    """Próbuje powiększyć instancję o +1 CPU i +6 GB RAM"""
+    """Attempts to upgrade the instance by +1 OCPU and +6 GB RAM."""
     current_cpu = instance.shape_config.ocpus
     current_ram = instance.shape_config.memory_in_gbs
-    
+
     next_cpu = min(current_cpu + 1.0, FINAL_OCPUS)
     next_ram = min(current_ram + 6.0, FINAL_MEMORY)
-    
-    print(f"[{time.strftime('%H:%M:%S')}] Próba ulepszenia: {current_cpu}CPU/{current_ram}GB -> {next_cpu}CPU/{next_ram}GB...")
-    
+
+    print(f"[{time.strftime('%H:%M:%S')}] Attempting upgrade: {current_cpu} OCPU / {current_ram} GB -> {next_cpu} OCPU / {next_ram} GB...")
+
     update_details = oci.core.models.UpdateInstanceDetails(
         shape_config=oci.core.models.UpdateInstanceShapeConfigDetails(
             ocpus=next_cpu,
             memory_in_gbs=next_ram
         )
     )
-    
+
     try:
         compute_client.update_instance(instance.id, update_details)
-        print(f"!!! SUKCES !!! Zasoby zwiększone do {next_cpu} OCPU / {next_ram} GB RAM.")
+        print(f"!!! SUCCESS !!! Resources increased to {next_cpu} OCPU / {next_ram} GB RAM.")
         return True
     except oci.exceptions.ServiceError as e:
         if "Out of capacity" in e.message or e.status == 500:
-            print(f"[{time.strftime('%H:%M:%S')}] Brak wolnych zasobów na kolejny krok ulepszenia.")
+            print(f"[{time.strftime('%H:%M:%S')}] No capacity available for the next upgrade step.")
         else:
-            print(f"Błąd API podczas ulepszania: {e.message}")
+            print(f"API Error during upgrade: {e.message}")
         return False
 
 def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
-    """Tworzy bazową instancję 1 OCPU / 6 GB RAM"""
+    """Launches a base instance with 1 OCPU / 6 GB RAM."""
+    print(f"[{time.strftime('%H:%M:%S')}] Attempting to launch a base instance (1 OCPU / 6 GB)...")
     launch_details = oci.core.models.LaunchInstanceDetails(
         compartment_id=compartment_id,
         availability_domain=ad_name,
@@ -64,62 +66,83 @@ def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
     )
     try:
         compute_client.launch_instance(launch_details)
-        print(f"\n[{time.strftime('%H:%M:%S')}] !!! SUKCES !!! Utworzono bazę 1 OCPU / 6 GB RAM.")
+        print(f"\n[{time.strftime('%H:%M:%S')}] !!! SUCCESS !!! Launched base instance (1 OCPU / 6 GB RAM).")
         return True
     except oci.exceptions.ServiceError as e:
         if "Out of capacity" in e.message or e.status == 500:
-            print(f"[{time.strftime('%H:%M:%S')}] Brak wolnych zasobów na start (1/6). Czekam...")
+            print(f"[{time.strftime('%H:%M:%S')}] No capacity available to launch a base instance. Waiting...")
         else:
-            print(f"Błąd API podczas tworzenia: {e.message}")
+            print(f"API Error during launch: {e.message}")
         return False
 
 def main():
     parser = argparse.ArgumentParser(description="Oracle-Instance-Hunter: Automated OCI ARM instance deployment and scaling.")
-    parser.add_argument("--config-path", default="config", help="Path to the OCI config file.")
-    parser.add_argument("--private-key-path", default="id_rsa.pub", help="Path to the SSH public key file.")
+    parser.add_argument("--config-path", default="config", help="Path to the OCI config file (absolute or relative).")
+    parser.add_argument("--ssh-key-path", default="id_rsa.pub", help="Path to the SSH public key file (absolute or relative).")
     args = parser.parse_args()
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # Wczytywanie klucza SSH
-    with open(os.path.join(script_dir, args.private_key_path), 'r') as f:
+    # --- 3. File Validation ---
+    if not os.path.exists(args.config_path):
+        print(f"Error: OCI config file not found at '{args.config_path}'")
+        sys.exit(1)
+    if not os.path.exists(args.ssh_key_path):
+        print(f"Error: SSH public key file not found at '{args.ssh_key_path}'")
+        sys.exit(1)
+
+    # --- 1. Path Handling ---
+    # Load SSH key from the specified path
+    with open(args.ssh_key_path, 'r') as f:
         ssh_key = f.read()
 
-    # Konfiguracja OCI
-    config = oci.config.from_file(os.path.join(script_dir, args.config_path))
+    # Load OCI config from the specified path
+    config = oci.config.from_file(args.config_path)
     compute_client = oci.core.ComputeClient(config)
     identity_client = oci.identity.IdentityClient(config)
-    
+
     compartment_id = config["tenancy"]
     ad_name = identity_client.list_availability_domains(compartment_id).data[0].name
-    
-    print(f"Skrypt Zarządcy ARM uruchomiony we Frankfurcie.")
+
+    print(f"Oracle ARM Instance Hunter started in region: {config['region']}.")
+    print(f"Target: {FINAL_OCPUS} OCPUs, {FINAL_MEMORY} GB RAM.")
 
     while True:
         try:
-            # Sprawdź instancje
+            # Check for existing instances
             instances = compute_client.list_instances(compartment_id).data
             active = [i for i in instances if i.shape == SHAPE and i.lifecycle_state not in ("TERMINATED", "TERMINATING")]
 
             if not active:
-                # KROK 1: Jeśli nie ma nic, stwórz 1/6
+                # STEP 1: If no instance exists, launch a base one
                 launch_initial(compute_client, compartment_id, ad_name, ssh_key)
             else:
                 inst = active[0]
-                # KROK 2: Jeśli jest mniejsza niż 4/24, ulepszaj
+                # STEP 2: If the instance is smaller than the target, upgrade it
                 if inst.shape_config.ocpus < FINAL_OCPUS or inst.shape_config.memory_in_gbs < FINAL_MEMORY:
                     try_upgrade(compute_client, inst)
                 else:
-                    # KROK 3: Jeśli osiągnięto cel, wyłącz skrypt
+                    # STEP 3: If the target is reached, exit
                     print("\n" + "="*50)
-                    print("GRATULACJE! Twoja instancja osiągnęła 4 OCPU i 24 GB RAM.")
-                    print("Skrypt kończy pracę.")
+                    print("CONGRATULATIONS! Your instance has reached the target:")
+                    print(f"{inst.shape_config.ocpus} OCPUs and {inst.shape_config.memory_in_gbs} GB RAM.")
+                    print("Script is now terminating.")
                     print("="*50)
                     break
+        
+        # --- 2. Handle 401 Errors ---
+        except oci.exceptions.ServiceError as e:
+            if e.status == 401:
+                print(f"[{time.strftime('%H:%M:%S')}] Authentication Error (401): NotAuthenticated.")
+                print("This might be due to a system time mismatch. Please ensure your system clock is synchronized.")
+                print("Waiting 120 seconds before retrying...")
+                time.sleep(120)
+            else:
+                print(f"A service error occurred: {e.message}")
+                print("Waiting a random interval before retrying...")
         except Exception as e:
-            print(f"Wystąpił nieoczekiwany błąd: {e}")
+            print(f"An unexpected error occurred: {e}")
+            print("Waiting a random interval before retrying...")
 
-        # Odczekaj od 30 do 60 sekund przed kolejną próbą
+        # Wait a random interval before the next attempt
         time.sleep(random.randint(30, 60))
 
 if __name__ == "__main__":
