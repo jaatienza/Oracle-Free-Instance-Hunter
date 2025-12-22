@@ -94,7 +94,7 @@ def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
 def main():
     setup_logging()
 
-    parser = argparse.ArgumentParser(description="Oracle-Instance-Hunter: Automated OCI ARM instance deployment and scaling.")
+    parser = argparse.ArgumentParser(description="Oracle-Free-Instance-Hunter: Automated OCI Always Free ARM instance deployment and scaling.")
     parser.add_argument("--config-path", default="config", help="Path to the OCI config file (absolute or relative).")
     parser.add_argument("--private-key-path", default="id_rsa.pub", help="Path to the SSH public key file (absolute or relative).")
     args = parser.parse_args()
@@ -121,7 +121,7 @@ def main():
     compartment_id = config["tenancy"]
     ad_name = identity_client.list_availability_domains(compartment_id).data[0].name
 
-    logging.info(f"Oracle ARM Instance Hunter started in region: {config['region']}.")
+    logging.info(f"Oracle-Free-Instance-Hunter started in region: {config['region']}.")
     logging.info(f"Target: {FINAL_OCPUS} OCPUs, {FINAL_MEMORY} GB RAM.")
 
     while True:

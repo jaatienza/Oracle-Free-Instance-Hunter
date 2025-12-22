@@ -2,21 +2,21 @@
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![OCI SDK](https://img.shields.io/badge/OCI%20SDK-red.svg)
 
-# Oracle-Instance-Hunter
+# Oracle-Free-Instance-Hunter 🚀
 
 ## Project Overview
-Oracle-Instance-Hunter is a professional Python tool for automated deployment and scaling of Oracle Cloud Infrastructure (OCI) ARM instances. It is designed to find and provision Always Free ARM instances, incrementally scaling them to the maximum available resources.
+Oracle-Free-Instance-Hunter is a professional Python tool for the automated deployment and scaling of Oracle Cloud Infrastructure (OCI) **Always Free** ARM instances. It is specifically designed to find and provision Always Free resources, incrementally scaling them to the maximum available configuration (4 OCPUs and 24 GB RAM).
 
 ## Features
-- **Automated Instance Provisioning**: Automatically launches a base ARM instance (1 OCPU / 6 GB RAM) if no active instance is found.
+- **Automated Instance Provisioning**: Automatically launches a base Always Free ARM instance (1 OCPU / 6 GB RAM) if no active instance is found.
 - **Incremental Scaling**: Continuously attempts to upgrade the instance resources until the target of 4 OCPUs and 24 GB RAM is reached.
-- **Resilient Error Handling**: Gracefully handles common API errors, including `Out of capacity` and `401 NotAuthenticated` (due to time sync issues).
+- **Resilient Error Handling**: Gracefully handles common API errors, including `Out of capacity` and `401 NotAuthenticated`.
 - **Robust Logging**: All operations are logged to both the console and a `hunter.log` file for easy monitoring and debugging.
 - **Flexible Configuration**: Supports both relative and absolute paths for configuration files and SSH keys.
 
 ## Prerequisites
 - Python 3.8+
-- An Oracle Cloud Infrastructure account.
+- An Oracle Cloud Infrastructure account with **Always Free** tier eligibility.
 
 ## Configuration
 
@@ -56,3 +56,8 @@ python main.py --config-path /path/to/your/config --private-key-path /path/to/yo
 - `--private-key-path`: Path to the SSH public key file (`.pub`) to be added to the instance. Defaults to `id_rsa.pub` in the script directory.
 
 The script will start logging its activities to the console and to `hunter.log`. It will terminate automatically once the target instance shape is achieved.
+
+---
+
+## AI-Assisted Development
+This project was developed and optimized with the assistance of Google Gemini.
