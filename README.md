@@ -1,9 +1,18 @@
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![OCI SDK](https://img.shields.io/badge/OCI%20SDK-red.svg)
+
 # Oracle-Instance-Hunter
 
 ## Project Overview
-Oracle-Instance-Hunter is a professional Python tool for automated deployment and scaling of Oracle Cloud Infrastructure (OCI) ARM instances. It is designed to find and provision Always Free ARM instances, incrementally scaling them to the maximum available resources (4 OCPUs and 24 GB RAM).
+Oracle-Instance-Hunter is a professional Python tool for automated deployment and scaling of Oracle Cloud Infrastructure (OCI) ARM instances. It is designed to find and provision Always Free ARM instances, incrementally scaling them to the maximum available resources.
 
-The script runs continuously, monitoring for available capacity and automatically attempting to launch or upgrade an instance until the target shape is achieved. All operations are logged to both the console and a `hunter.log` file.
+## Features
+- **Automated Instance Provisioning**: Automatically launches a base ARM instance (1 OCPU / 6 GB RAM) if no active instance is found.
+- **Incremental Scaling**: Continuously attempts to upgrade the instance resources until the target of 4 OCPUs and 24 GB RAM is reached.
+- **Resilient Error Handling**: Gracefully handles common API errors, including `Out of capacity` and `401 NotAuthenticated` (due to time sync issues).
+- **Robust Logging**: All operations are logged to both the console and a `hunter.log` file for easy monitoring and debugging.
+- **Flexible Configuration**: Supports both relative and absolute paths for configuration files and SSH keys.
 
 ## Prerequisites
 - Python 3.8+
@@ -18,7 +27,7 @@ pip install -r requirements.txt
 ```
 
 ### 2. OCI Configuration
-You need a standard OCI `config` file containing your tenancy OCID, user OCID, region, fingerprint, and the path to your private API key. This tool loads the configuration from a file specified by the `--config-path` argument.
+Create a `config` file based on the provided `config.example`. This file must contain your tenancy OCID, user OCID, region, API key fingerprint, and the path to your private API key (`.pem` file).
 
 **Example `config` file:**
 ```ini
@@ -36,7 +45,7 @@ Before running, you must edit `main.py` and set the following variables with you
 - `IMAGE_ID`: The OCID of the ARM-based OS image to use (e.g., Oracle Linux).
 
 ## Usage
-Run the script from your terminal. Provide the paths to your OCI config file and your SSH public key using the command-line arguments. The script handles both relative and absolute paths.
+Run the script from your terminal. Provide the paths to your OCI config file and your SSH public key using the command-line arguments.
 
 ```bash
 python main.py --config-path /path/to/your/config --private-key-path /path/to/your/id_rsa.pub

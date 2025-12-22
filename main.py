@@ -156,7 +156,7 @@ def main():
             logging.error(f"An unexpected error occurred: {e}", exc_info=True)
             logging.info("Waiting a random interval before retrying...")
 
-        time.sleep(random.randint(30, 60))
+        time.sleep(random.randint(60, 120))
 
 if __name__ == "__main__":
     main()
