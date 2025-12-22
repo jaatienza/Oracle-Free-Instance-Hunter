@@ -16,6 +16,21 @@ FINAL_OCPUS = 4.0
 FINAL_MEMORY = 24.0
 SHAPE = "VM.Standard.A1.Flex"
 
+def setup_logging():
+    """Configures the logging for the application."""
+    log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    
+    # File Handler
+    file_handler = logging.FileHandler("hunter.log")
+    file_handler.setFormatter(log_formatter)
+    
+    # Console Handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(log_formatter)
+    
+    # Configure root logger
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
+
 def format_ssh_key(raw_key):
     """Formats the raw SSH public key content into the required format."""
     if "-----BEGIN" in raw_key:
@@ -77,38 +92,29 @@ def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
         return False
 
 def main():
-    # --- 5. Setup Logging ---
-    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # File Handler
-    file_handler = logging.FileHandler("hunter.log")
-    file_handler.setFormatter(log_formatter)
-    
-    # Console Handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(log_formatter)
-    
-    # Configure root logger
-    logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Oracle-Instance-Hunter: Automated OCI ARM instance deployment and scaling.")
     parser.add_argument("--config-path", default="config", help="Path to the OCI config file (absolute or relative).")
-    parser.add_argument("--ssh-key-path", default="id_rsa.pub", help="Path to the SSH public key file (absolute or relative).")
+    parser.add_argument("--private-key-path", default="id_rsa.pub", help="Path to the SSH public key file (absolute or relative).")
     args = parser.parse_args()
 
-    # --- File Validation ---
-    if not os.path.exists(args.config_path):
-        logging.error(f"Error: OCI config file not found at '{args.config_path}'")
+    # --- 1. Path Handling ---
+    config_path = os.path.abspath(args.config_path)
+    ssh_key_path = os.path.abspath(args.private_key_path)
+
+    # --- 4. File Validation ---
+    if not os.path.exists(config_path):
+        logging.error(f"Error: OCI config file not found at '{config_path}'")
         sys.exit(1)
-    if not os.path.exists(args.ssh_key_path):
-        logging.error(f"Error: SSH public key file not found at '{args.ssh_key_path}'")
+    if not os.path.exists(ssh_key_path):
+        logging.error(f"Error: SSH public key file not found at '{ssh_key_path}'")
         sys.exit(1)
 
-    # --- Path Handling ---
-    with open(args.ssh_key_path, 'r') as f:
+    with open(ssh_key_path, 'r') as f:
         ssh_key = f.read()
 
-    config = oci.config.from_file(args.config_path)
+    config = oci.config.from_file(config_path)
     compute_client = oci.core.ComputeClient(config)
     identity_client = oci.identity.IdentityClient(config)
 
@@ -120,20 +126,16 @@ def main():
 
     while True:
         try:
-            # Check for existing instances
             instances = compute_client.list_instances(compartment_id).data
             active = [i for i in instances if i.shape == SHAPE and i.lifecycle_state not in ("TERMINATED", "TERMINATING")]
 
             if not active:
-                # STEP 1: If no instance exists, launch a base one
                 launch_initial(compute_client, compartment_id, ad_name, ssh_key)
             else:
                 inst = active[0]
-                # STEP 2: If the instance is smaller than the target, upgrade it
                 if inst.shape_config.ocpus < FINAL_OCPUS or inst.shape_config.memory_in_gbs < FINAL_MEMORY:
                     try_upgrade(compute_client, inst)
                 else:
-                    # STEP 3: If the target is reached, exit
                     logging.info("="*50)
                     logging.info("CONGRATULATIONS! Your instance has reached the target:")
                     logging.info(f"{inst.shape_config.ocpus} OCPUs and {inst.shape_config.memory_in_gbs} GB RAM.")
@@ -141,9 +143,10 @@ def main():
                     logging.info("="*50)
                     break
         
+        # --- 3. Error Handling ---
         except oci.exceptions.ServiceError as e:
             if e.status == 401:
-                logging.error("Authentication Error (401): NotAuthenticated. This might be due to a system time mismatch. Please ensure your system clock is synchronized.", exc_info=True)
+                logging.warning("Authentication Error (401): NotAuthenticated. This may be due to a system time mismatch. Please ensure your system clock is synchronized.")
                 logging.info("Waiting 120 seconds before retrying...")
                 time.sleep(120)
             else:
@@ -153,7 +156,6 @@ def main():
             logging.error(f"An unexpected error occurred: {e}", exc_info=True)
             logging.info("Waiting a random interval before retrying...")
 
-        # Wait a random interval before the next attempt
         time.sleep(random.randint(30, 60))
 
 if __name__ == "__main__":
