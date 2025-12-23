@@ -1,3 +1,4 @@
+![Oracle Hunter Logo](Oracle-Hunter.png)
 ![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![OCI SDK](https://img.shields.io/badge/OCI%20SDK-red.svg)
