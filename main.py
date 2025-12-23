@@ -6,10 +6,10 @@ import random
 import argparse
 import logging
 
-# --- Configuration (Adjust as needed) ---
-# Ensure these values are correct for your OCI environment
-SUBNET_ID = "ocid1.subnet.oc1.iad.xxxx"  # Example: "ocid1.subnet.oc1.iad.xxxx"
-IMAGE_ID = "ocid1.image.oc1.iad.xxxx"   # Example: "ocid1.image.oc1.iad.xxxx"
+# --- Configuration ---
+# Te wartości są pobierane z Twojego środowiska/configu
+SUBNET_ID = "ocid1.subnet.oc1.eu-frankfurt-1.xxxx"  
+IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"   
 
 # --- Target Always Free Shape ---
 FINAL_OCPUS = 4.0
@@ -17,22 +17,14 @@ FINAL_MEMORY = 24.0
 SHAPE = "VM.Standard.A1.Flex"
 
 def setup_logging():
-    """Configures the logging for the application."""
     log_formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-    
-    # File Handler
     file_handler = logging.FileHandler("hunter.log")
     file_handler.setFormatter(log_formatter)
-    
-    # Console Handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(log_formatter)
-    
-    # Configure root logger
     logging.basicConfig(level=logging.INFO, handlers=[file_handler, console_handler])
 
 def format_ssh_key(raw_key):
-    """Formats the raw SSH public key content into the required format."""
     if "-----BEGIN" in raw_key:
         lines = raw_key.replace("-----BEGIN PUBLIC KEY-----", "").replace("-----END PUBLIC KEY-----", "").split()
         base64_key = "".join(lines)
@@ -40,36 +32,28 @@ def format_ssh_key(raw_key):
     return raw_key.strip()
 
 def try_upgrade(compute_client, instance):
-    """Attempts to upgrade the instance by +1 OCPU and +6 GB RAM."""
     current_cpu = instance.shape_config.ocpus
     current_ram = instance.shape_config.memory_in_gbs
-
     next_cpu = min(current_cpu + 1.0, FINAL_OCPUS)
     next_ram = min(current_ram + 6.0, FINAL_MEMORY)
 
-    logging.info(f"Attempting upgrade: {current_cpu} OCPU / {current_ram} GB -> {next_cpu} OCPU / {next_ram} GB...")
-
+    logging.info(f"Attempting upgrade: {current_cpu} OCPU -> {next_cpu} OCPU...")
     update_details = oci.core.models.UpdateInstanceDetails(
-        shape_config=oci.core.models.UpdateInstanceShapeConfigDetails(
-            ocpus=next_cpu,
-            memory_in_gbs=next_ram
-        )
+        shape_config=oci.core.models.UpdateInstanceShapeConfigDetails(ocpus=next_cpu, memory_in_gbs=next_ram)
     )
-
     try:
         compute_client.update_instance(instance.id, update_details)
         logging.info(f"SUCCESS! Resources increased to {next_cpu} OCPU / {next_ram} GB RAM.")
         return True
     except oci.exceptions.ServiceError as e:
+        if e.status == 429:
+            return "RETRY_LATER"
         if "Out of capacity" in e.message or e.status == 500:
-            logging.warning("No capacity available for the next upgrade step.")
-        else:
-            logging.error(f"API Error during upgrade: {e.message}", exc_info=True)
+            logging.warning(f"No capacity for upgrade in current AD.")
         return False
 
 def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
-    """Launches a base instance with 1 OCPU / 6 GB RAM."""
-    logging.info("Attempting to launch a base instance (1 OCPU / 6 GB)...")
+    logging.info(f"Checking capacity in AD: {ad_name}...")
     launch_details = oci.core.models.LaunchInstanceDetails(
         compartment_id=compartment_id,
         availability_domain=ad_name,
@@ -82,33 +66,29 @@ def launch_initial(compute_client, compartment_id, ad_name, ssh_key):
     )
     try:
         compute_client.launch_instance(launch_details)
-        logging.info("SUCCESS! Launched base instance (1 OCPU / 6 GB RAM).")
+        logging.info(f"✨ SUCCESS! Launched base instance in {ad_name}!")
         return True
     except oci.exceptions.ServiceError as e:
+        if e.status == 429:
+            return "RETRY_LATER"
         if "Out of capacity" in e.message or e.status == 500:
-            logging.warning("No capacity available to launch a base instance. Waiting...")
+            logging.warning(f"AD {ad_name.split('-')[-1]}: Out of capacity.")
         else:
-            logging.error(f"API Error during launch: {e.message}", exc_info=True)
+            logging.error(f"API Error: {e.message}")
         return False
 
 def main():
     setup_logging()
-
-    parser = argparse.ArgumentParser(description="Oracle-Free-Instance-Hunter: Automated OCI Always Free ARM instance deployment and scaling.")
-    parser.add_argument("--config-path", default="config", help="Path to the OCI config file (absolute or relative).")
-    parser.add_argument("--private-key-path", default="id_rsa.pub", help="Path to the SSH public key file (absolute or relative).")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config-path", default="config")
+    parser.add_argument("--private-key-path", default="id_rsa.pub")
     args = parser.parse_args()
 
-    # --- 1. Path Handling ---
     config_path = os.path.abspath(args.config_path)
     ssh_key_path = os.path.abspath(args.private_key_path)
 
-    # --- 4. File Validation ---
-    if not os.path.exists(config_path):
-        logging.error(f"Error: OCI config file not found at '{config_path}'")
-        sys.exit(1)
-    if not os.path.exists(ssh_key_path):
-        logging.error(f"Error: SSH public key file not found at '{ssh_key_path}'")
+    if not os.path.exists(config_path) or not os.path.exists(ssh_key_path):
+        logging.error("Missing config or SSH key file!")
         sys.exit(1)
 
     with open(ssh_key_path, 'r') as f:
@@ -117,12 +97,15 @@ def main():
     config = oci.config.from_file(config_path)
     compute_client = oci.core.ComputeClient(config)
     identity_client = oci.identity.IdentityClient(config)
-
     compartment_id = config["tenancy"]
-    ad_name = identity_client.list_availability_domains(compartment_id).data[0].name
 
-    logging.info(f"Oracle-Free-Instance-Hunter started in region: {config['region']}.")
-    logging.info(f"Target: {FINAL_OCPUS} OCPUs, {FINAL_MEMORY} GB RAM.")
+    # Pobierz wszystkie 3 domeny dostępności (AD)
+    try:
+        ad_list = [ad.name for ad in identity_client.list_availability_domains(compartment_id).data]
+        logging.info(f"Hunter active. Monitoring domains: {ad_list}")
+    except Exception as e:
+        logging.error(f"Failed to fetch ADs: {e}")
+        sys.exit(1)
 
     while True:
         try:
@@ -130,33 +113,37 @@ def main():
             active = [i for i in instances if i.shape == SHAPE and i.lifecycle_state not in ("TERMINATED", "TERMINATING")]
 
             if not active:
-                launch_initial(compute_client, compartment_id, ad_name, ssh_key)
+                # Pętla po wszystkich AD w jednym cyklu
+                for ad in ad_list:
+                    result = launch_initial(compute_client, compartment_id, ad, ssh_key)
+                    if result == "RETRY_LATER":
+                        logging.warning("Rate limit hit (429). Backing off...")
+                        break 
+                    if result is True:
+                        break
+                    time.sleep(2) # Mała przerwa między AD
             else:
                 inst = active[0]
                 if inst.shape_config.ocpus < FINAL_OCPUS or inst.shape_config.memory_in_gbs < FINAL_MEMORY:
-                    try_upgrade(compute_client, inst)
+                    res = try_upgrade(compute_client, inst)
+                    if res == "RETRY_LATER":
+                        logging.warning("Rate limit hit (429) during upgrade.")
                 else:
-                    logging.info("="*50)
-                    logging.info("CONGRATULATIONS! Your instance has reached the target:")
-                    logging.info(f"{inst.shape_config.ocpus} OCPUs and {inst.shape_config.memory_in_gbs} GB RAM.")
-                    logging.info("Script is now terminating.")
-                    logging.info("="*50)
+                    logging.info("Target reached! Ending hunt.")
                     break
         
-        # --- 3. Error Handling ---
         except oci.exceptions.ServiceError as e:
-            if e.status == 401:
-                logging.warning("Authentication Error (401): NotAuthenticated. This may be due to a system time mismatch. Please ensure your system clock is synchronized.")
-                logging.info("Waiting 120 seconds before retrying...")
-                time.sleep(120)
+            if e.status == 429:
+                time.sleep(60)
             else:
-                logging.error(f"A service error occurred: {e.message}", exc_info=True)
-                logging.info("Waiting a random interval before retrying...")
+                logging.error(f"Service Error: {e.message}")
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}", exc_info=True)
-            logging.info("Waiting a random interval before retrying...")
+            logging.error(f"Unexpected Error: {e}")
 
-        time.sleep(random.randint(60, 120))
+        # Losowy czas oczekiwania między pełnymi cyklami (wszystkie AD)
+        wait = random.randint(10, 30)
+        logging.info(f"Waiting {wait}s for next full cycle...")
+        time.sleep(wait)
 
 if __name__ == "__main__":
     main()
