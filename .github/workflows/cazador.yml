@@ -1,9 +1,9 @@
 name: Oracle Free Instance Hunter
 
 on:
-  workflow_dispatch: # Permite arrancar de forma manual
+  workflow_dispatch: 
   schedule:
-    - cron: '*/30 * * * *' # Bucle de reintento automático cada 30 minutos
+    - cron: '*/30 * * * *' 
 
 jobs:
   hunt:
@@ -29,28 +29,26 @@ jobs:
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
           fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          key_file=id_rsa.pub
+          key_file=api_private_key.pem
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=${{ secrets.OCI_REGION }}
           EOF
 
-      - name: Generar archivo de clave privada temporal
+      - name: Generar archivo de clave privada de la API
         run: |
-          echo "${{ secrets.OCI_KEY_CONTENT }}" > id_rsa.pub
-          chmod 600 id_rsa.pub
+          echo "${{ secrets.OCI_KEY_CONTENT }}" > api_private_key.pem
+          chmod 600 api_private_key.pem
+
+      - name: Generar archivo de clave publica SSH para el Servidor
+        run: |
+          # Aquí guardamos tu clave ssh-rsa para acceder luego a la máquina
+          echo "${{ secrets.SSH_PUBLIC_KEY }}" > id_rsa.pub
 
       - name: Inyectar datos de Madrid 3 en el código fuente
         run: |
-          # 1. Forzar el Compartimento correcto del usuario sobre la Tenancy raíz
           sed -i 's/compartment_id = config\["tenancy"\]/compartment_id = "${{ secrets.OCI_COMPARTMENT_OCID }}"/g' main.py
-          
-          # 2. Reemplazar la Subred hardcodeada por tu secreto de subred de Madrid 3
           sed -i 's|SUBNET_ID = "ocid1.subnet.oc1.eu-frankfurt-1.xxxx"|SUBNET_ID = "${{ secrets.OCI_SUBNET_OCID }}"|g' main.py
-          
-          # 3. Reemplazar la Imagen por la de Ubuntu 24.04 ARM nativa para eu-madrid-3
           sed -i 's|IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"|IMAGE_ID = "ocid1.image.oc1.eu-madrid-3.aaaaaaaayw6w7h3qom2vctsm7bzwumndwun2eclixshmptf2h3c6g66bcoofm76a"|g' main.py
-          
-          # 4. Ajustar los recursos a tus 2 OCPUs y 12 GB de RAM elegidos
           sed -i 's/FINAL_OCPUS = 1.0/FINAL_OCPUS = 2.0/g' main.py
           sed -i 's/FINAL_MEMORY = 6.0/FINAL_MEMORY = 12.0/g' main.py
 
