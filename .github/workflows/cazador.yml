@@ -1,0 +1,48 @@
+name: Oracle Free Instance Hunter
+
+on:
+  workflow_dispatch: # Te permite darle al botón "Run workflow" a mano
+  schedule:
+    - cron: '*/30 * * * *' # Se ejecuta automáticamente cada 30 minutos
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias
+        run: |
+          pip install oci
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Generar archivo config temporal
+        run: |
+          cat <<EOF > config
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ secrets.OCI_REGION }}
+          key_file=id_rsa.pub
+          ocpus=2
+          memory_in_gbs: 12
+          shape=VM.Standard.A1.Flex
+          compartment_id=${{ secrets.OCI_COMPARTMENT_OCID }}
+          EOF
+
+      - name: Generar archivo de clave privada temporal
+        run: |
+          echo "${{ secrets.OCI_KEY_CONTENT }}" > id_rsa.pub
+          chmod 600 id_rsa.pub
+
+      - name: Ejecutar script cazador
+        run: |
+          python main.py --config-path config --private-key-path id_rsa.pub
