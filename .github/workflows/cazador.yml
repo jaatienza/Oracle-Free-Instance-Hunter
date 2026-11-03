@@ -39,12 +39,20 @@ jobs:
           echo "${{ secrets.OCI_KEY_CONTENT }}" > id_rsa.pub
           chmod 600 id_rsa.pub
 
-      - name: Ejecutar script cazador con variables inyectadas
-        env:
-          # Inyectamos los datos de la máquina como variables de entorno para el script de Python
-          OCI_OCPUS: 2
-          OCI_MEMORY_IN_GBS: 12
-          OCI_IMAGE_ID: ocid1.image.oc1.eu-madrid-1.aaaaaaaamyw57x3m6m7bcywsmwmdwun2eclixshmptf2h3c6g66bcoofm76a
-          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      - name: Inyectar datos de Madrid y límites en main.py
+        run: |
+          # 1. Reemplazamos la Subred de Frankfurt por la tuya de Madrid (usando el secreto de GitHub)
+          sed -i 's|SUBNET_ID = "ocid1.subnet.oc1.eu-frankfurt-1.xxxx"|SUBNET_ID = "${{ secrets.OCI_SUBNET_OCID }}"|g' main.py
+          
+          # 2. Reemplazamos la Imagen de Frankfurt por la de Ubuntu 24.04 ARM en Madrid
+          sed -i 's|IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"|IMAGE_ID = "ocid1.image.oc1.eu-madrid-1.aaaaaaaamyw57x3m6m7bcywsmwmdwun2eclixshmptf2h3c6g66bcoofm76a"|g' main.py
+          
+          # 3. Ajustamos el objetivo final a tus 2 OCPUs deseados
+          sed -i 's/FINAL_OCPUS = 1.0/FINAL_OCPUS = 2.0/g' main.py
+          
+          # 4. Ajustamos la memoria RAM final a tus 12 GB deseados
+          sed -i 's/FINAL_MEMORY = 6.0/FINAL_MEMORY = 12.0/g' main.py
+
+      - name: Ejecutar script cazador
         run: |
           python main.py --config-path config --private-key-path id_rsa.pub
