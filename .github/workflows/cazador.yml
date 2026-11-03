@@ -23,20 +23,15 @@ jobs:
           pip install oci
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Generar archivo config temporal
+      - name: Generar archivo config oficial de Oracle
         run: |
           cat <<EOF > config
           [DEFAULT]
           user=${{ secrets.OCI_USER_OCID }}
           fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          key_file=id_rsa.pub
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=${{ secrets.OCI_REGION }}
-          key_file=id_rsa.pub
-          ocpus=2
-          memory_in_gbs: 12
-          shape=VM.Standard.A1.Flex
-          compartment_id=${{ secrets.OCI_COMPARTMENT_OCID }}
-          image_id=${{ secrets.OCI_IMAGE_ID }}
           EOF
 
       - name: Generar archivo de clave privada temporal
@@ -44,6 +39,12 @@ jobs:
           echo "${{ secrets.OCI_KEY_CONTENT }}" > id_rsa.pub
           chmod 600 id_rsa.pub
 
-      - name: Ejecutar script cazador
+      - name: Ejecutar script cazador con variables inyectadas
+        env:
+          # Inyectamos los datos de la máquina como variables de entorno para el script de Python
+          OCI_OCPUS: 2
+          OCI_MEMORY_IN_GBS: 12
+          OCI_IMAGE_ID: ocid1.image.oc1.eu-madrid-1.aaaaaaaamyw57x3m6m7bcywsmwmdwun2eclixshmptf2h3c6g66bcoofm76a
+          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_OCID }}
         run: |
           python main.py --config-path config --private-key-path id_rsa.pub
