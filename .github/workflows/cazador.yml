@@ -36,6 +36,7 @@ jobs:
           memory_in_gbs: 12
           shape=VM.Standard.A1.Flex
           compartment_id=${{ secrets.OCI_COMPARTMENT_OCID }}
+          image_id=${{ secrets.OCI_IMAGE_ID }}
           EOF
 
       - name: Generar archivo de clave privada temporal
