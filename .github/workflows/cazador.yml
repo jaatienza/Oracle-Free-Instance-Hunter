@@ -1,9 +1,9 @@
 name: Oracle Free Instance Hunter
 
 on:
-  workflow_dispatch: # Te permite darle al botón "Run workflow" a mano
+  workflow_dispatch: # Permite arrancar de forma manual
   schedule:
-    - cron: '*/30 * * * *' # Se ejecuta automáticamente cada 30 minutos
+    - cron: '*/30 * * * *' # Bucle de reintento automático cada 30 minutos
 
 jobs:
   hunt:
@@ -39,29 +39,21 @@ jobs:
           echo "${{ secrets.OCI_KEY_CONTENT }}" > id_rsa.pub
           chmod 600 id_rsa.pub
 
-      - name: Inyectar datos de Madrid y límites en main.py
+      - name: Inyectar datos de Madrid 3 en el código fuente
         run: |
-          # 1. Reemplazamos la Subred de Frankfurt por la tuya de Madrid (usando el secreto de GitHub)
+          # 1. Forzar el Compartimento correcto del usuario sobre la Tenancy raíz
+          sed -i 's/compartment_id = config\["tenancy"\]/compartment_id = "${{ secrets.OCI_COMPARTMENT_OCID }}"/g' main.py
+          
+          # 2. Reemplazar la Subred hardcodeada por tu secreto de subred de Madrid 3
           sed -i 's|SUBNET_ID = "ocid1.subnet.oc1.eu-frankfurt-1.xxxx"|SUBNET_ID = "${{ secrets.OCI_SUBNET_OCID }}"|g' main.py
           
-          # 2. Reemplazamos la Imagen de Frankfurt por la de Ubuntu 24.04 ARM en Madrid
-          sed -i 's|IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"|IMAGE_ID = "ocid1.image.oc1.eu-madrid-1.aaaaaaaamyw57x3m6m7bcywsmwmdwun2eclixshmptf2h3c6g66bcoofm76a"|g' main.py
+          # 3. Reemplazar la Imagen por la de Ubuntu 24.04 ARM nativa para eu-madrid-3
+          sed -i 's|IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"|IMAGE_ID = "ocid1.image.oc1.eu-madrid-3.aaaaaaaayw6w7h3qom2vctsm7bzwumndwun2eclixshmptf2h3c6g66bcoofm76a"|g' main.py
           
-          # 3. Ajustamos el objetivo final a tus 2 OCPUs deseados
+          # 4. Ajustar los recursos a tus 2 OCPUs y 12 GB de RAM elegidos
           sed -i 's/FINAL_OCPUS = 1.0/FINAL_OCPUS = 2.0/g' main.py
-          
-          # 4. Ajustamos la memoria RAM final a tus 12 GB deseados
           sed -i 's/FINAL_MEMORY = 6.0/FINAL_MEMORY = 12.0/g' main.py
-          
-      - name: Forzar Compartimento del usuario
-        run: |
-          sed -i 's/compartment_id = config\["tenancy"\]/compartment_id = os.environ.get("OCI_COMPARTMENT_ID")/g' main.py
 
       - name: Ejecutar script cazador
-        env:
-          OCI_OCPUS: 2
-          OCI_MEMORY_IN_GBS: 12
-          OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_OCID }}
         run: |
           python main.py --config-path config --private-key-path id_rsa.pub
-
