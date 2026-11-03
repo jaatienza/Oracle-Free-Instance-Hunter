@@ -12,8 +12,8 @@ SUBNET_ID = "ocid1.subnet.oc1.eu-frankfurt-1.xxxx"
 IMAGE_ID = "ocid1.image.oc1.eu-frankfurt-1.xxxx"   
 
 # --- Target Always Free Shape ---
-FINAL_OCPUS = 4.0
-FINAL_MEMORY = 24.0
+FINAL_OCPUS = 1.0
+FINAL_MEMORY = 6.0
 SHAPE = "VM.Standard.A1.Flex"
 
 def setup_logging():
